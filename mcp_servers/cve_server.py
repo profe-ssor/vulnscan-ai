@@ -46,11 +46,11 @@ def _extract_cvss(metrics: dict) -> tuple[float, str]:
     """
     # Try CVSS v3.1 first, then v3.0, then v2.0
     for version_key in ["cvssMetricV31", "cvssMetricV30"]:
-        if version_key in metrics:
+        if version_key in metrics and metrics[version_key]:
             data = metrics[version_key][0]["cvssData"]
             return data.get("baseScore", 0.0), data.get("vectorString", "")
 
-    if "cvssMetricV2" in metrics:
+    if "cvssMetricV2" in metrics and metrics["cvssMetricV2"]:
         data = metrics["cvssMetricV2"][0]["cvssData"]
         return data.get("baseScore", 0.0), data.get("vectorString", "")
 
@@ -116,7 +116,7 @@ def search_cves(package_name: str, version: str = "", max_results: int = 10) -> 
 
         # Collect reference URLs (advisories, patches, etc.)
         refs = cve.get("references", [])
-        reference_urls = [r["url"] for r in refs[:5]]  # cap at 5 links
+        reference_urls = [r.get("url") for r in refs[:5] if r.get("url")]
 
         # Published date
         published = cve.get("published", "Unknown")[:10]  # just the date part
@@ -185,7 +185,7 @@ def get_cve_details(cve_id: str) -> dict:
 
     # References
     refs = cve.get("references", [])
-    reference_urls = [r["url"] for r in refs[:10]]
+    reference_urls = [r.get("url") for r in refs[:10] if r.get("url")]
 
     return {
         "cve_id": cve.get("id", cve_id),

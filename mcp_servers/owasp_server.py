@@ -12,6 +12,7 @@ slot directly into the shared Finding schema.
 Transport: stdio
 """
 
+import os
 import re
 from mcp.server.fastmcp import FastMCP
 
@@ -209,8 +210,8 @@ PATTERNS = [
 
 def _get_extension(file_path: str) -> str:
     """Extract the file extension from a path."""
-    dot = file_path.rfind(".")
-    return file_path[dot:].lower() if dot != -1 else ""
+    _, ext = os.path.splitext(os.path.basename(file_path))
+    return ext.lower()
 
 
 @mcp.tool()

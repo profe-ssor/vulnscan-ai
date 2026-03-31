@@ -39,7 +39,10 @@ async def main():
             print(f"CLONING: {TEST_REPO}")
             print("=" * 60)
             result = await session.call_tool("clone_repo", {"repo_url": TEST_REPO})
+            assert result.content, "clone_repo returned empty content"
             repo_path = result.content[0].text
+            if repo_path.startswith("Error"):
+                raise RuntimeError(f"clone_repo failed: {repo_path}")
             print(f"  Cloned to: {repo_path}")
             print()
 

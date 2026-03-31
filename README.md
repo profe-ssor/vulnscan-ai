@@ -13,13 +13,12 @@ GitHub Repo URL
       |
 [Orchestrator Agent - LangGraph] --> clone, detect language, fan out, collect, deduplicate, rank
       |
-  +---+---+---+
-  |   |       |
-Static  Dependency  Config/Secrets
-Analysis  Audit       Agent
-Agent     Agent
-  |   |       |
-  +---+---+---+
+  +--------------------+--------------------+--------------------+
+  |                    |                    |                    |
+  | Static Analysis    | Dependency Audit   | Config/Secrets     |
+  | Agent              | Agent              | Agent              |
+  |                    |                    |                    |
+  +--------------------+--------------------+--------------------+
       |
 [Report Generator Agent]
       |

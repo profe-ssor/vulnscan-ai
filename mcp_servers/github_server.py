@@ -9,10 +9,12 @@ Transport: stdio (launched as a subprocess by the orchestrator)
 """
 
 import os
+import re
 import shutil
 import subprocess
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urlparse
 
 from mcp.server.fastmcp import FastMCP
 
@@ -77,9 +79,26 @@ def clone_repo(repo_url: str) -> str:
     Returns:
         The local path where the repo was cloned.
     """
-    # Extract repo name from URL to create a unique folder
-    repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
-    clone_path = CLONE_DIR / repo_name
+    # Validate the URL is a proper GitHub HTTPS URL
+    parsed = urlparse(repo_url.rstrip("/"))
+    if parsed.scheme != "https" or not parsed.netloc.endswith("github.com"):
+        return "Error: only HTTPS GitHub URLs are supported"
+
+    # Extract owner and repo from the path (e.g. /owner/repo or /owner/repo.git)
+    path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+    if len(path_parts) < 2:
+        return "Error: invalid GitHub URL — expected https://github.com/owner/repo"
+
+    owner = re.sub(r"[^\w\-.]", "", path_parts[0])
+    repo = re.sub(r"[^\w\-.]", "", path_parts[1].removesuffix(".git"))
+    if not owner or not repo:
+        return "Error: invalid owner or repo name in URL"
+
+    clone_path = CLONE_DIR / f"{owner}_{repo}"
+
+    # Ensure clone_path is inside CLONE_DIR (prevent path traversal)
+    if not clone_path.resolve().is_relative_to(CLONE_DIR.resolve()):
+        return "Error: invalid repository path"
 
     # If already cloned, remove and re-clone for fresh state
     if clone_path.exists():
@@ -151,7 +170,12 @@ def read_file(repo_path: str, file_path: str, max_lines: int = 1000) -> str:
     Returns:
         The file contents as a string, with line numbers prepended.
     """
-    full_path = Path(repo_path) / file_path
+    repo_root = Path(repo_path).resolve()
+    full_path = (Path(repo_path) / file_path).resolve()
+
+    # Prevent path traversal (e.g. file_path = "../../etc/passwd")
+    if not full_path.is_relative_to(repo_root):
+        return "Error: file not found or access denied"
 
     if not full_path.exists():
         return f"Error: file {file_path} not found"
@@ -205,6 +229,8 @@ def detect_languages(repo_path: str) -> dict[str, int]:
 
     # Also check for Dockerfiles (no extension)
     for path in root.rglob("Dockerfile*"):
+        if any(part in IGNORE_DIRS for part in path.parts):
+            continue
         counts["Docker"] += 1
 
     return dict(counts.most_common())

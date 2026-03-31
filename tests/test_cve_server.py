@@ -36,6 +36,7 @@ async def main():
                 "version": "2.25.0",
                 "max_results": 3,
             })
+            assert result.content, "search_cves returned empty content"
             print(result.content[0].text)
             print()
 
@@ -46,6 +47,7 @@ async def main():
             result = await session.call_tool("get_cve_details", {
                 "cve_id": "CVE-2021-44228",
             })
+            assert result.content, "get_cve_details returned empty content"
             print(result.content[0].text)
 
 
