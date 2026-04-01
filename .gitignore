@@ -1,3 +1,10 @@
+.env
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+/tmp/
+nohup.out
 # Python cache/bytecode
 __pycache__/
 *.py[cod]
