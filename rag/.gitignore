@@ -1,0 +1,25 @@
+# --- Vector Database ---
+# Teammates will generate this locally using sync.py
+chroma_cve_db/
+
+# --- Python Environment & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+
+# --- Local Scripts & Testing Artifacts ---
+# Removed as requested
+test_rag.py
+test_retrieval.py
+testing.txt
+
+# --- Command Artifacts & Typos ---
+To
+=0.1.0
+=0.3.0
+
+# --- General Metadata ---
+.pytest_cache/
+.coverage
