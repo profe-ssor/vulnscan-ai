@@ -1,0 +1,15 @@
+# RAG Core
+chromadb==1.5.5
+langchain-chroma==1.1.0
+langchain-huggingface==1.2.1
+langchain-text-splitters==0.3.11
+
+# Models & Backend
+sentence-transformers==2.7.0
+transformers==4.41.2
+huggingface-hub==0.35.3
+torch==2.11.0+cpu
+
+# Data Processing
+beautifulsoup4==4.14.2
+pypdf==6.1.1
