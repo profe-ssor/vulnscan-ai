@@ -2,6 +2,7 @@ import os
 import subprocess
 import tempfile
 import sys
+import asyncio
 from typing import List
 from langgraph.graph import StateGraph, END
 
@@ -148,31 +149,34 @@ def run_scan_agents(state: GraphState) -> GraphState:
 
     all_findings: List[Finding] = []
 
-    # --- Import Person B's agents ---
-    # (These will raise NotImplementedError until Person B builds them)
     try:
-        from agents.static_analysis import run_static_analysis
-        findings = run_static_analysis(state["files"], state["languages"])
-        all_findings.extend(findings)
-        print(f"      Static analysis: {len(findings)} findings")
-    except NotImplementedError:
-        print("      [SKIP] Static analysis agent not implemented yet")
+        from agents import CodeAnalysisAgent, DependencyAuditAgent, SecretsAgent
+        from rag.retrieve import DynamicSecurityKnowledgeBase
 
-    try:
-        from agents.dependency_audit import run_dependency_audit
-        findings = run_dependency_audit(state["repo_path"])
-        all_findings.extend(findings)
-        print(f"      Dependency audit: {len(findings)} findings")
-    except NotImplementedError:
-        print("      [SKIP] Dependency audit agent not implemented yet")
+        kb = DynamicSecurityKnowledgeBase()
+        sast_agent = CodeAnalysisAgent(kb=kb)
+        dep_agent = DependencyAuditAgent(kb=kb)
+        secrets_agent = SecretsAgent(kb=kb)
 
-    try:
-        from agents.config_secrets import run_config_secrets
-        findings = run_config_secrets(state["files"])
-        all_findings.extend(findings)
-        print(f"      Config/secrets: {len(findings)} findings")
-    except NotImplementedError:
-        print("      [SKIP] Config/secrets agent not implemented yet")
+        async def _run_all():
+            return await asyncio.gather(
+                sast_agent.scan_node(state["repo_path"]),
+                dep_agent.scan_node(state["repo_path"]),
+                secrets_agent.scan_node(state["repo_path"]),
+                return_exceptions=True,
+            )
+
+        results = asyncio.run(_run_all())
+
+        labels = ["Static analysis", "Dependency audit", "Config/secrets"]
+        for label, result in zip(labels, results):
+            if isinstance(result, Exception):
+                print(f"      [SKIP] {label}: {result}")
+                continue
+            all_findings.extend(result)
+            print(f"      {label}: {len(result)} findings")
+    except Exception as e:
+        print(f"      [SKIP] Scanner agents unavailable: {e}")
 
     return {**state, "findings": all_findings}
 
