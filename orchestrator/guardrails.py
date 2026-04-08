@@ -100,19 +100,67 @@ def input_guardrails(repo_url: str) -> Tuple[bool, str]:
 # OUTPUT GUARDRAILS
 # ─────────────────────────────────────────────
 
-# Known valid CWE IDs (expand this list)
-VALID_CWE_IDS = {
-    "CWE-89",   # SQL Injection
-    "CWE-79",   # XSS
-    "CWE-78",   # OS Command Injection
-    "CWE-22",   # Path Traversal
-    "CWE-798",  # Hardcoded Credentials
-    "CWE-502",  # Deserialization
-    "CWE-200",  # Information Exposure
-    "CWE-306",  # Missing Authentication
+VALID_SEVERITIES = {"Critical", "High", "Medium", "Low"}
+
+_CWE_PATTERN = re.compile(r"^CWE-\d{1,5}$", re.IGNORECASE)
+
+_SEVERITY_ALIASES = {
+    "critical": "Critical",
+    "crit": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "med": "Medium",
+    "low": "Low",
+    "info": "Low",
+    "informational": "Low",
 }
 
-VALID_SEVERITIES = {"Critical", "High", "Medium", "Low"}
+
+def normalize_severity(raw: str) -> str:
+    """Map LLM output (e.g. HIGH, high) to guardrail canonical values."""
+    if raw is None:
+        return "Low"
+    if not isinstance(raw, str):
+        raw = str(raw)
+    s = raw.strip()
+    if not s:
+        return "Low"
+    upper = s.upper()
+    upper_map = {
+        "CRITICAL": "Critical",
+        "CRIT": "Critical",
+        "HIGH": "High",
+        "MEDIUM": "Medium",
+        "MED": "Medium",
+        "LOW": "Low",
+        "INFO": "Low",
+        "INFORMATIONAL": "Low",
+        "NONE": "Low",
+    }
+    if upper in upper_map:
+        return upper_map[upper]
+    key = s.lower()
+    if key in _SEVERITY_ALIASES:
+        return _SEVERITY_ALIASES[key]
+    t = s.title()
+    if t in VALID_SEVERITIES:
+        return t
+    return "Low"
+
+
+def normalize_cwe_id(raw: str) -> str:
+    """Normalize to CWE-123 form; accept any standard CWE number from the model."""
+    if not raw or not str(raw).strip():
+        return "CWE-200"
+    s = str(raw).strip().upper()
+    if s.startswith("CWE-"):
+        m = re.match(r"^CWE-(\d{1,5})$", s)
+        if m:
+            return f"CWE-{int(m.group(1))}"  # CWE-020 -> CWE-20
+    m = re.search(r"CWE-(\d{1,5})", s, re.I)
+    if m:
+        return f"CWE-{int(m.group(1))}"
+    return "CWE-200"
 
 # Regex to detect secrets that might have leaked into the report
 SECRET_PATTERNS = [
@@ -137,11 +185,11 @@ def validate_finding(finding: Finding) -> Tuple[bool, str]:
     """
     Check one Finding object is valid before it goes into the report.
     """
-    # CWE ID must be real
-    if finding.cwe_id not in VALID_CWE_IDS:
-        return False, f"Unknown CWE ID: {finding.cwe_id}"
+    finding.cwe_id = normalize_cwe_id(finding.cwe_id)
+    if not _CWE_PATTERN.match(finding.cwe_id):
+        return False, f"Malformed CWE ID: {finding.cwe_id}"
 
-    # Severity must be one of our 4 levels
+    finding.severity = normalize_severity(finding.severity)
     if finding.severity not in VALID_SEVERITIES:
         return False, f"Invalid severity: {finding.severity}"
 

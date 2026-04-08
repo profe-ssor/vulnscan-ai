@@ -506,3 +506,31 @@ def retrieve_dual(
         query[:40], len(results1), len(results2), len(chunks),
     )
     return chunks
+
+
+# ---------------------------------------------------------------------------
+# Adapter for scanner agents (Person B) — orchestrator injects one instance
+# ---------------------------------------------------------------------------
+
+
+class DynamicSecurityKnowledgeBase:
+    """
+    Thin facade over retrieve() so agents can call get_authoritative_advice().
+
+    If Chroma is empty or retrieval fails, returns an empty string (agents still run).
+    """
+
+    def get_authoritative_advice(self, text: str) -> str:
+        q = (text or "").strip()
+        if not q:
+            return ""
+        try:
+            # Internal enrichment only (trusted agent text). skip_guardrails avoids
+            # per-caller rate limits when many files are scanned in parallel.
+            chunks = retrieve(q, top_k=3, caller_id="kb_enrich", skip_guardrails=True)
+            if not chunks:
+                return ""
+            return "\n\n---\n\n".join(chunks)
+        except Exception as e:
+            log.warning("get_authoritative_advice failed: %s", e)
+            return ""

@@ -1,0 +1,12 @@
+# Local “full stack” install (same as uv lock). Use ONLY inside a venv or `uv`:
+#   uv sync
+#   uv pip install chainlit
+#   uv run chainlit run app.py --host 0.0.0.0 --port 8000
+#
+# Do NOT `pip install` on Debian system Python (PEP 668).
+#
+# For Docker / Hugging Face, use requirements-chainlit-docker.txt (slim, no PyAV).
+#
+chainlit>=1.3.0,<3.0.0
+
+-r requirements.txt

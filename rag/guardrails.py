@@ -19,6 +19,9 @@ MAX_CHUNK_LENGTH = 1500          # characters — truncate oversized chunks
 RATE_LIMIT_WINDOW_SEC = 60       # sliding window
 RATE_LIMIT_MAX_CALLS = 30        # max retrieve() calls per window per caller
 
+# Agent KB enrichment calls retrieve() once per finding (parallel scans). These
+# caller_ids are trusted internal paths and must not trip the user-facing limit.
+_INTERNAL_RETRIEVE_CALLERS = frozenset({"kb_enrich", "kb_adapter"})
 
 
 class GuardrailError(ValueError):
@@ -157,7 +160,7 @@ def validate_query(
     """
     warnings: list[str] = []
 
-    if not skip_rate_limit:
+    if not skip_rate_limit and caller_id not in _INTERNAL_RETRIEVE_CALLERS:
         _check_rate_limit(caller_id)
 
     query = query.strip()

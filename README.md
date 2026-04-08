@@ -1,8 +1,23 @@
+---
+title: vulnscan-ai
+emoji: 🔍
+colorFrom: gray
+colorTo: green
+sdk: docker
+app_port: 7860
+short_description: Scan GitHub repos for vulnerabilities (Chainlit + LangGraph)
+suggested_hardware: cpu-basic
+startup_duration_timeout: 45m
+---
 # VulnScan AI
 
 Multi-agent system that scans any GitHub repository for security vulnerabilities. Give it a repo URL, get back an actionable vulnerability report with severity ratings, CWE classifications, and suggested fixes.
 
 Built with LangGraph, OpenAI Agents SDK, MCP (Model Context Protocol), and RAG.
+
+### Hugging Face Spaces
+
+The Space uses **`sdk: docker`** (see the YAML header above) and the root **`Dockerfile`**, which installs **`requirements-chainlit-docker.txt`**. Do not switch the Space to the Gradio SDK: the UI is **Chainlit** (`chainlit run app.py`), and the full **`requirements.txt`** pulls **PyAV (`av`)** / **aiortc**, which often fails to build on Space runners. Add **`OPENAI_API_KEY`** under **Settings → Repository secrets**.
 
 ## Architecture
 

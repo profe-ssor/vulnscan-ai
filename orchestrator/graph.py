@@ -3,8 +3,23 @@ import subprocess
 import tempfile
 import sys
 import asyncio
-from typing import List
+from typing import List, Optional, Callable
+
 from langgraph.graph import StateGraph, END
+
+# Optional UI hook: progress_callback(step_label, detail) e.g. ("1/7", "Validating URL…")
+_PROGRESS_CB: Optional[Callable[[str, str], None]] = None
+
+
+def _progress(step: str, detail: str) -> None:
+    line = f"[{step}] {detail}"
+    print(line)
+    cb = _PROGRESS_CB
+    if cb:
+        try:
+            cb(step, detail)
+        except Exception:
+            pass
 
 # Allow direct execution: `python orchestrator/graph.py`
 if __name__ == "__main__" and __package__ is None:
@@ -42,12 +57,12 @@ def validate_input(state: GraphState) -> GraphState:
     Step 1: Run input guardrails on the repo URL.
     If it fails, set status to 'failed' and stop.
     """
-    print(f"[1/7] Validating input: {state['repo_url']}")
+    _progress("1/7 · Input guardrails", f"Checking URL: {state['repo_url']}")
 
     is_safe, error = input_guardrails(state["repo_url"])
 
     if not is_safe:
-        print(f"[GUARDRAIL] Input blocked: {error}")
+        _progress("1/7 · Input guardrails", f"Blocked: {error}")
         return {**state, "status": "failed"}
 
     return {**state, "status": "running"}
@@ -61,7 +76,7 @@ def clone_repo(state: GraphState) -> GraphState:
     if state["status"] == "failed":
         return state   # skip if already failed
 
-    print(f"[2/7] Cloning repo: {state['repo_url']}")
+    _progress("2/7 · Clone", f"Cloning `{state['repo_url']}` …")
 
     # Create a clone directory inside this project workspace.
     os.makedirs(COLLECTED_REPOS_DIR, exist_ok=True)
@@ -73,11 +88,11 @@ def clone_repo(state: GraphState) -> GraphState:
             check=True,
             capture_output=True
         )
-        print(f"      Cloned to: {tmp_dir}")
+        _progress("2/7 · Clone", f"Done — `{tmp_dir}`")
         return {**state, "repo_path": tmp_dir}
 
     except subprocess.CalledProcessError as e:
-        print(f"[ERROR] Clone failed: {e.stderr.decode()}")
+        _progress("2/7 · Clone", f"Failed: {e.stderr.decode()[:200]}")
         return {**state, "status": "failed"}
 
 
@@ -91,7 +106,7 @@ def detect_language(state: GraphState) -> GraphState:
     if state["status"] == "failed":
         return state
 
-    print(f"[3/7] Detecting languages in: {state['repo_path']}")
+    _progress("3/7 · Languages", "Scanning file extensions …")
 
     # Map file extensions to language names
     extension_map = {
@@ -122,8 +137,10 @@ def detect_language(state: GraphState) -> GraphState:
             if ext in extension_map:
                 languages_found.add(extension_map[ext])
 
-    print(f"      Found languages: {languages_found}")
-    print(f"      Total files: {len(all_files)}")
+    _progress(
+        "3/7 · Languages",
+        f"Found: {', '.join(sorted(languages_found)) or '—'} · {len(all_files)} files",
+    )
 
     return {
         **state,
@@ -145,7 +162,10 @@ def run_scan_agents(state: GraphState) -> GraphState:
     if state["status"] == "failed":
         return state
 
-    print(f"[4/7] Running scanner agents...")
+    _progress(
+        "4/7 · Scanners",
+        "Running static analysis, dependency audit, and config/secrets (LLM) …",
+    )
 
     all_findings: List[Finding] = []
 
@@ -171,12 +191,12 @@ def run_scan_agents(state: GraphState) -> GraphState:
         labels = ["Static analysis", "Dependency audit", "Config/secrets"]
         for label, result in zip(labels, results):
             if isinstance(result, Exception):
-                print(f"      [SKIP] {label}: {result}")
+                _progress("4/7 · Scanners", f"{label}: skipped ({result})")
                 continue
             all_findings.extend(result)
-            print(f"      {label}: {len(result)} findings")
+            _progress("4/7 · Scanners", f"{label}: {len(result)} raw finding(s)")
     except Exception as e:
-        print(f"      [SKIP] Scanner agents unavailable: {e}")
+        _progress("4/7 · Scanners", f"Agents unavailable: {e}")
 
     return {**state, "findings": all_findings}
 
@@ -191,7 +211,7 @@ def deduplicate_findings(state: GraphState) -> GraphState:
     if state["status"] == "failed":
         return state
 
-    print(f"[5/7] Deduplicating {len(state['findings'])} findings...")
+    _progress("5/7 · Dedupe", f"Merging duplicates from {len(state['findings'])} findings …")
 
     seen = set()
     unique_findings = []
@@ -205,7 +225,7 @@ def deduplicate_findings(state: GraphState) -> GraphState:
             unique_findings.append(finding)
 
     removed = len(state["findings"]) - len(unique_findings)
-    print(f"      Removed {removed} duplicates. {len(unique_findings)} remain.")
+    _progress("5/7 · Dedupe", f"Removed {removed} duplicate(s); {len(unique_findings)} remain")
 
     return {**state, "findings": unique_findings}
 
@@ -218,7 +238,7 @@ def rank_findings(state: GraphState) -> GraphState:
     if state["status"] == "failed":
         return state
 
-    print(f"[6/7] Ranking findings by severity...")
+    _progress("6/7 · Rank", "Sorting by severity (Critical → Low) …")
 
     ranked = sorted(
         state["findings"],
@@ -235,11 +255,11 @@ def validate_output(state: GraphState) -> GraphState:
     if state["status"] == "failed":
         return state
 
-    print(f"[7/7] Running output guardrails...")
+    _progress("7/7 · Output guardrails", "Validating CWE/severity and redacting secrets …")
 
     clean_findings = output_guardrails(state["findings"])
 
-    print(f"      Final findings: {len(clean_findings)}")
+    _progress("7/7 · Output guardrails", f"Complete — {len(clean_findings)} finding(s) kept")
 
     return {
         **state,
@@ -287,30 +307,39 @@ def build_graph():
 # This is what everyone calls to run a scan
 # ─────────────────────────────────────────────
 
-def run_scan(repo_url: str) -> GraphState:
+def run_scan(
+    repo_url: str,
+    progress_callback: Optional[Callable[[str, str], None]] = None,
+) -> GraphState:
     """
     Main function. Give it a GitHub URL, get back a full report.
+
+    Optional progress_callback(step_label, detail) runs from the worker thread
+    (e.g. push to an asyncio.Queue via run_coroutine_threadsafe for Chainlit).
 
     Usage:
         from orchestrator.graph import run_scan
         result = run_scan("https://github.com/owner/repo")
         print(result["findings"])
     """
-    app = build_graph()
+    global _PROGRESS_CB
+    _PROGRESS_CB = progress_callback
+    try:
+        app = build_graph()
 
-    # Starting state — all empty, just the URL
-    initial_state: GraphState = {
-        "repo_url": repo_url,
-        "repo_path": "",
-        "languages": [],
-        "files": [],
-        "findings": [],
-        "status": "pending"
-    }
+        initial_state: GraphState = {
+            "repo_url": repo_url,
+            "repo_path": "",
+            "languages": [],
+            "files": [],
+            "findings": [],
+            "status": "pending",
+        }
 
-    # Run the full workflow
-    result = app.invoke(initial_state)
-    return result
+        result = app.invoke(initial_state)
+        return result
+    finally:
+        _PROGRESS_CB = None
 
 
 # ─────────────────────────────────────────────
