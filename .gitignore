@@ -37,3 +37,5 @@ collected_repos/
 tmp/
 *.log
 
+chroma_cve_db/
+raw_knowledgebase/
